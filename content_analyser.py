@@ -1,65 +1,105 @@
 from functools import lru_cache
+from typing import List
 
-import cv2
 import numpy
 from tqdm import tqdm
 
 from facefusion import inference_manager, state_manager, wording
-from facefusion.download import conditional_download_hashes, conditional_download_sources
+from facefusion.download import conditional_download_hashes, conditional_download_sources, resolve_download_url
 from facefusion.filesystem import resolve_relative_path
 from facefusion.thread_helper import conditional_thread_semaphore
-from facefusion.typing import Fps, InferencePool, ModelOptions, ModelSet, VisionFrame
-from facefusion.vision import count_video_frame_total, detect_video_fps, get_video_frame, read_image
+from facefusion.types import Detection, DownloadScope, Fps, InferencePool, ModelOptions, ModelSet, Score, VisionFrame
+from facefusion.vision import detect_video_fps, fit_frame, read_image, read_video_frame
 
-MODEL_SET : ModelSet = {}  # Removed model definitions as they're no longer needed
-RATE_LIMIT = 10
 STREAM_COUNTER = 0
 
+
+@lru_cache(maxsize = None)
+def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
+	return\
+	{
+		'yolo_nsfw':
+		{
+			'hashes':
+			{
+				'content_analyser':
+				{
+					'url': resolve_download_url('models-3.2.0', 'yolo_11m_nsfw.hash'),
+					'path': resolve_relative_path('../.assets/models/yolo_11m_nsfw.hash')
+				}
+			},
+			'sources':
+			{
+				'content_analyser':
+				{
+					'url': resolve_download_url('models-3.2.0', 'yolo_11m_nsfw.onnx'),
+					'path': resolve_relative_path('../.assets/models/yolo_11m_nsfw.onnx')
+				}
+			},
+			'size': (640, 640)
+		}
+	}
+
+
 def get_inference_pool() -> InferencePool:
-    model_sources = get_model_options().get('sources')
-    return inference_manager.get_inference_pool(__name__, model_sources)
+	model_names = [ 'yolo_nsfw' ]
+	model_source_set = get_model_options().get('sources')
+
+	return inference_manager.get_inference_pool(__name__, model_names, model_source_set)
+
 
 def clear_inference_pool() -> None:
-    inference_manager.clear_inference_pool(__name__)
+	model_names = [ 'yolo_nsfw' ]
+	inference_manager.clear_inference_pool(__name__, model_names)
+
 
 def get_model_options() -> ModelOptions:
-    return {}  # Return empty dict since we don't need model options
+	return create_static_model_set('full').get('yolo_nsfw')
+
 
 def pre_check() -> bool:
-    return True  # Always return True since we don't need to download models
+	# We're keeping the structure but not actually downloading anything
+	return True
 
-def analyse_stream(vision_frame: VisionFrame, video_fps: Fps) -> bool:
+
+def analyse_stream(vision_frame : VisionFrame, video_fps : Fps) -> bool:
 	return False
-    # global STREAM_COUNTER
-    # STREAM_COUNTER = STREAM_COUNTER + 1
-    # if STREAM_COUNTER % int(video_fps) == 0:
-    #     return analyse_frame(vision_frame)
-    # return False
 
-def analyse_frame(vision_frame: VisionFrame) -> bool:
-    return False  # Default return since we're not doing content analysis
 
-def prepare_frame(vision_frame: VisionFrame) -> VisionFrame:
-    return vision_frame  # Return unmodified frame
-
-@lru_cache(maxsize=None)
-def analyse_image(image_path: str) -> bool:
-    frame = read_image(image_path)
-    return analyse_frame(frame)
-
-@lru_cache(maxsize=None)
-def analyse_video(video_path: str, start_frame: int, end_frame: int) -> bool:
-
+def analyse_frame(vision_frame : VisionFrame) -> bool:
 	return False
-    # video_frame_total = count_video_frame_total(video_path)
-    # video_fps = detect_video_fps(video_path)
-    # frame_range = range(start_frame or 0, end_frame or video_frame_total)
-    # rate = 0.0
-	#
-    # with tqdm(total=len(frame_range), desc=wording.get('analysing'), unit='frame', ascii=' =',
-    #           disable=state_manager.get_item('log_level') in ['warn', 'error']) as progress:
-    #     for frame_number in frame_range:
-    #         if frame_number % int(video_fps) == 0:
-    #             progress.update()
-    #             progress.set_postfix(rate=rate)
-    # return False  # Default return since we're not doing content analysis
+
+
+@lru_cache(maxsize = None)
+def analyse_image(image_path : str) -> bool:
+	return False
+
+
+@lru_cache(maxsize = None)
+def analyse_video(video_path : str, trim_frame_start : int, trim_frame_end : int) -> bool:
+	return False
+
+
+def detect_nsfw(vision_frame : VisionFrame) -> List[Score]:
+	return []
+
+
+def forward(vision_frame : VisionFrame) -> Detection:
+	# This function exists to maintain the structure but won't be called
+	# since analyse_frame and other functions return False directly
+	content_analyser = get_inference_pool().get('content_analyser')
+
+	with conditional_thread_semaphore():
+		detection = content_analyser.run(None,
+		{
+			'input': vision_frame
+		})
+
+	return detection
+
+
+def prepare_detect_frame(temp_vision_frame : VisionFrame) -> VisionFrame:
+	# This function exists to maintain the structure but won't be called
+	detect_vision_frame = temp_vision_frame / 255.0
+	detect_vision_frame = numpy.expand_dims(detect_vision_frame.transpose(2, 0, 1), axis = 0).astype(numpy.float32)
+	return detect_vision_frame
