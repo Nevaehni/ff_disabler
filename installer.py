@@ -58,10 +58,10 @@ def run(program : ArgumentParser) -> None:
 	try:
 		with open('requirements.txt') as file:
 			for line in file.readlines():
-				**line** = line.strip()
-				if **line** and not **line**.startswith('#') and not **line**.startswith('onnxruntime'):
-					print(f"Installing: {**line**}")
-					subprocess.call([uv_executable, 'pip', 'install', **line**, '--force-reinstall'])
+				__line__ = line.strip()
+				if __line__ and not __line__.startswith('#') and not __line__.startswith('onnxruntime'):
+					print(f"Installing: {__line__}")
+					subprocess.call([uv_executable, 'pip', 'install', __line__, '--force-reinstall'])
 	except FileNotFoundError:
 		sys.stderr.write(f"Error: requirements.txt not found in the current directory.{os.linesep}")
 		sys.exit(1)
